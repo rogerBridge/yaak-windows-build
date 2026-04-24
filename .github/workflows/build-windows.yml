@@ -1,0 +1,87 @@
+name: Build Windows x64
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v2026.3.1)'
+        required: true
+        default: 'v2026.3.1'
+
+jobs:
+  build-windows-x64:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.version }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: windows-build
+          cache-on-failure: true
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Bootstrap project
+        run: npm run bootstrap
+        env:
+          YAAK_TARGET_ARCH: x64
+
+      - name: Set version
+        run: npm run replace-version
+        env:
+          YAAK_VERSION: ${{ github.event.inputs.version }}
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          YAAK_TARGET_ARCH: x64
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.event.inputs.version }}
+          releaseName: 'Yaak ${{ github.event.inputs.version }}'
+          releaseBody: 'Custom build from source'
+          releaseDraft: true
+          prerelease: false
+          args: '--config ./crates-tauri/yaak-app/tauri.release.conf.json'
+
+      - name: List build artifacts
+        shell: pwsh
+        run: |
+          Get-ChildItem -Recurse -Path target -Filter "*.exe" | Select-Object FullName
+          Get-ChildItem -Recurse -Path target -Filter "*.msi" | Select-Object FullName
+
+      - name: Upload NSIS installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: yaak-windows-x64-nsis
+          path: target/release/bundle/nsis/*.exe
+          retention-days: 7
+
+      - name: Upload MSI installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: yaak-windows-x64-msi
+          path: target/release/bundle/msi/*.msi
+          retention-days: 7
