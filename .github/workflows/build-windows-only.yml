@@ -43,10 +43,19 @@ jobs:
         env:
           YAAK_TARGET_ARCH: x64
 
+      - name: Extract version
+        id: version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $version = $tag -replace '^build-windows-', ''
+          echo "version=$version" >> $env:GITHUB_OUTPUT
+          echo "Extracted version: $version"
+
       - name: Set version
         run: npm run replace-version
         env:
-          YAAK_VERSION: ${{ github.ref_name }}
+          YAAK_VERSION: ${{ steps.version.outputs.version }}
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
@@ -54,8 +63,8 @@ jobs:
           YAAK_TARGET_ARCH: x64
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'Yaak ${{ github.ref_name }}'
+          tagName: ${{ steps.version.outputs.version }}
+          releaseName: 'Yaak ${{ steps.version.outputs.version }}'
           releaseBody: 'Custom build from source (MIT License)'
           releaseDraft: true
           prerelease: false
